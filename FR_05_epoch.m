@@ -8,6 +8,7 @@ FR_bemobil_config
 %% filepaths
 input_filepath  = [bemobil_config.study_folder '\' bemobil_config.single_subject_analysis_folder  bemobil_config.filename_prefix num2str(subject)];
 output_filepath = [bemobil_config.study_folder '\' bemobil_config.epoched_folder  bemobil_config.filename_prefix num2str(subject)];
+
 if ~isfolder(output_filepath)
     mkdir(output_filepath);
 end
@@ -141,9 +142,14 @@ EEG_epoched.epoch(rejectVec)   = [];
 EEG_epoched.data(:,:,rejectVec) = [];
 
 % ensure that the behavioural struct and eeg epochs match in number
+if subject == 12
+    BEH(417,:) = []; % for sub 12 recording ended early - remove the last trial
+elseif subject == 17
+    BEH(418:419,:) = []; % for sub 17 recording ended early - remove the last two trials    
+end
 assert(size(BEH,1) == numel(EEG_epoched.epoch)); 
 pop_saveset(EEG_epoched, 'filename', ['sub-' num2str(subject) '_' bemobil_config.epoched_filename],'filepath', output_filepath, 'savemode', 'twofiles');
-
+save(fullfile(output_filepath, ['sub-' num2str(subject) '_RT.mat']),"BEH"); 
 
 end
 

@@ -114,6 +114,6 @@ grid on;
 box on;
 
 saveas(f, fullfile(['P:\Sein_Jeung\Project_Fold_Rotation\Figures\subject_ERPs\sub-' num2str(subject) '_ERPs.png']))
-save(fullfile(['P:\Sein_Jeung\Project_Fold_Rotation\Data\7_ERPs\sub-' num2str(subject) '_ERPs.mat']), 'erpData');
+save(fullfile(['P:\Sein_Jeung\Project_Fold_Rotation\Data\7_ERPs\sub-' num2str(subject) '_ERPs.mat']), 'erpData', 'condInds');
 end
 
