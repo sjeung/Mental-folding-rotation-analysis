@@ -1,0 +1,334 @@
+---
+  title: 'Power analysis for: Is metal folding just a series of rotations?'
+---
+  
+  ```{r libraries, message=FALSE}
+library(designr) # functions for the design matrix and to perform simulations
+library(tidyverse) # data handling functions and plotting
+library(lme4) # mixed models
+library(lmerTest) # df estimations for mixed models
+library(patchwork) # arranging plots
+```
+
+```{r settings, results = "hide", message=FALSE, warnings = FALSE}
+## SIMULATION SETTINGS ##
+nsubj <- seq(20,50,5)
+nsim <- 100 # how many times to simulate each sample size
+powerThreshold <- 0.8 # between 0-1
+alphaThreshold <- 0.05 # between 0-1
+
+## ERP MODEL PARAMETERS ##
+ERP_fix     <- c(-0.4,-0.2,0.8,1.0) # based on prior study
+ERP_fix     <- ERP_fix*.75 # reduce down by 25% to account for possible smaller effect size
+ERP_sd_Subj <- 2.0 
+ERP_sd_Res  <- 1.0  
+ERP_SESOI   <- -0.3 # smallest effect size of interest for minimum effects testing
+
+## RT MODEL PARAMETERS ##
+RT_fix      <- c(4000, 3600, 3400, 3000) # based on prior study
+RT_fix      <- RT_fix*.75 # reduce down by 25% to account for possible smaller effect size
+RT_sd_Subj  <- 280
+RT_sd_Res   <- 170
+RT_SESOI    <- 100 # smallest effect size of interest for minimum effects testing
+
+## plot the predicted ERP effect ##
+dfERP <- data.frame(
+  ERP_fix = ERP_fix,
+  Rotation = factor(c(90, 90, 40, 40)),  
+  Folding = factor(c(6, 4, 6, 4))        
+)
+
+# create the bar plot
+pERP = ggplot(dfERP, aes(x = Rotation, y = ERP_fix, fill = Folding)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_fill_manual(
+    values = c("lightgray", "darkgray"),
+    labels = c("4" = "4 faces carried", "6" = "6 faces carried")
+  )+
+  labs(x = "Rotation Condition (°)", y = "Microvolts (µV)", fill = "Folding Condition") +
+  ylim(-0.5, 1) + 
+  theme_classic() +
+  theme(
+    axis.title.y = element_text(size = 8),
+    axis.title.x = element_text(size = 8),
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    legend.position = c(0.95, 0.95),
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = "white", color = "black"),
+    legend.key.size = unit(0.3, "cm"),       # smaller color boxes
+    legend.text = element_text(size = 6),    # smaller legend labels
+    legend.title = element_text(size = 6)    # smaller legend title
+  )
+# ggsave("ERP_barplot.png", plot = p, width = 4, height = 6, dpi = 300)
+
+## plot the predicted RT effect ##
+dfRT <- data.frame(
+  ERP_fix = RT_fix,
+  Rotation = factor(c(90, 90, 40, 40)),  
+  Folding = factor(c(6, 4, 6, 4))        
+)
+
+pRT = ggplot(dfRT, aes(x = Rotation, y = RT_fix, fill = Folding)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  scale_fill_manual(
+    values = c("lightgray", "darkgray"),
+    labels = c("4" = "4 faces carried", "6" = "6 faces carried")
+  )+
+  labs(x = "Rotation Condition (°)", y = "RT (ms)", fill = "Folding Condition") +
+  # ylim(-0.5, 1) + 
+  theme_classic() +
+  theme(
+    axis.title.y = element_text(size = 8),
+    axis.title.x = element_text(size = 8),
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    legend.position = c(0.90, 0.25),
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = "white", color = "black"),
+    legend.key.size = unit(0.3, "cm"),       # smaller color boxes
+    legend.text = element_text(size = 6),    # smaller legend labels
+    legend.title = element_text(size = 6)    # smaller legend title
+  )
+```
+
+```{r}
+print(pERP)
+```
+
+```{r}
+print(pRT)
+```
+
+This is the code used to simulate the data and perform the analysis. For reproducibility purposes, it is not run in this output because we load in the exact simulated results used in the pre-registration.
+
+```{r run simulations, results = "hide", warnings = FALSE, eval=FALSE}
+# data frames to store model results
+ERP_COF <- data.frame()
+RT_COF <- data.frame()
+
+# loop through all sample sizes
+for (i in 1:length(nsubj)) {
+  
+  # set up the design to be simulated
+  ERPdesign <-
+    fixed.factor("rotation", levels=c("rotationHigh90", "rotationLow40")) +
+    fixed.factor("folding", levels=c("foldingHigh6", "foldingLow4")) +
+    random.factor("Subj", instances=nsubj[i])
+  RTdesign <-
+    fixed.factor("rotation", levels=c("rotationHigh90", "rotationLow40")) +
+    fixed.factor("folding", levels=c("foldingHigh6", "foldingLow4")) +
+    random.factor("Subj", instances=nsubj[i]) +
+    random.factor("Stimuli", instances=10) +
+    random.factor("Block", instances=5)
+  
+  ERPdat <- design.codes(ERPdesign)
+  RTdat <- design.codes(RTdesign)
+  nsj <- length(unique(ERPdat$Subj))
+  
+  # set contrasts 
+  contrasts(ERPdat$rotation) <- c(1, 0)
+  contrasts(ERPdat$folding)  <- c(1, 0)
+  contrasts(RTdat$rotation) <- c(1, 0)
+  contrasts(RTdat$folding)  <- c(1, 0)
+  
+  # compute factor F
+  ERPdat$F <- factor(paste0(ERPdat$rotation, ".", ERPdat$folding))
+  RTdat$F <- factor(paste0(RTdat$rotation, ".", RTdat$folding))
+  
+  # simulate this sample size the defined number of times, and run an LMM each time, and store the result
+  for (j in 1:nsim) {  
+    
+    # ERP simulate data
+    ERPdat$ysim <- simLMM(form = ~ -1 + F + (1| Subj), data=ERPdat,
+                          Fixef=ERP_fix, VC_sd=list(ERP_sd_Subj, ERP_sd_Res))
+    
+    # ERP run model and store result
+    ERP_LMM <- lmer(ysim ~ rotation * folding + (1| Subj), data=ERPdat)
+    ERP_LMMcof <- coef(summary(ERP_LMM))[1:4,5]
+    ERP_LMMlowerCI_95 <- confint(ERP_LMM)[4:6,1]
+    ERP_LMMupperCI_95 <- confint(ERP_LMM)[4:6,2]
+    ERP_LMMlowerCI_90 <- confint(ERP_LMM, level = .9)[4:6,1]
+    ERP_LMMupperCI_90 <- confint(ERP_LMM, level = .9)[4:6,2]
+    ERP_COF <- rbind(ERP_COF,c(nsj, j, ERP_LMMcof,ERP_LMMlowerCI_95, ERP_LMMupperCI_95, 
+                               ERP_LMMlowerCI_90, ERP_LMMupperCI_90, isSingular(ERP_LMM)))
+    
+    # RT simulate data
+    RTdat$ysim <- simLMM(form = ~ -1 + F + (1| Subj), data=RTdat,
+                         Fixef=RT_fix, VC_sd=list(RT_sd_Subj, RT_sd_Res))
+    
+    # RT run model and store result
+    RT_LMM <- lmer(ysim ~ rotation * folding + (1| Subj), data=RTdat)
+    RT_LMMcof <- coef(summary(RT_LMM))[1:4,5]
+    RT_LMMlowerCI_95 <- confint(RT_LMM)[4:6,1]
+    RT_LMMupperCI_95 <- confint(RT_LMM)[4:6,2]
+    RT_LMMlowerCI_90 <- confint(RT_LMM, level = .9)[4:6,1]
+    RT_LMMupperCI_90 <- confint(RT_LMM, level = .9)[4:6,2]
+    RT_COF <- rbind(RT_COF,c(nsj, j, RT_LMMcof, RT_LMMlowerCI_95, RT_LMMupperCI_95, 
+                             RT_LMMlowerCI_90, RT_LMMupperCI_90, isSingular(RT_LMM)))
+    
+  }
+}
+
+```
+
+
+```{r organise, results = "hide", message=FALSE, eval=FALSE}
+# results from LMMs - calculate significance
+names(ERP_COF) <- c("num_subj","sim_num", 
+                    "pval_intercept","pval_rotation1","pval_folding1","pval_rotation1:folding1", 
+                    "lCI_95_rotation1","lCI_95_folding1","lCI_95_rotation1:folding1", 
+                    "uCI_95_rotation1","uCI_95_folding1","uCI_95_rotation1:folding1", 
+                    "lCI_90_rotation1","lCI_90_folding1","lCI_90_rotation1:folding1", 
+                    "uCI_90_rotation1","uCI_90_folding1","uCI_90_rotation1:folding1", 
+                    "singular")
+ERP_COF$psign_NHST <- as.numeric(ERP_COF$pval_rotation1 < alphaThreshold) # main effect of rotation angle on ERP for power analysis
+ERP_COF$minimum_effect_testing <- as.numeric((ERP_COF$lCI_95_rotation1 < ERP_SESOI) & (ERP_COF$uCI_95_rotation1 < ERP_SESOI))
+ERP_COF$equivalence <- as.numeric((ERP_COF$lCI_90_rotation1 > ERP_SESOI) & (ERP_COF$uCI_90_rotation1 < -ERP_SESOI))
+ERP_COF$model <- 'ERP'
+
+names(RT_COF) <- c("num_subj", "sim_num", 
+                   "pval_intercept","pval_rotation1","pval_folding1","pval_rotation1:folding1",
+                   "lCI_95_rotation1","lCI_95_folding1","lCI_95_rotation1:folding1", 
+                   "uCI_95_rotation1","uCI_95_folding1","uCI_95_rotation1:folding1", 
+                   "lCI_90_rotation1","lCI_90_folding1","lCI_90_rotation1:folding1", 
+                   "uCI_90_rotation1","uCI_90_folding1","uCI_90_rotation1:folding1", 
+                   "singular")
+RT_COF$psign_NHST  <- as.numeric(RT_COF$pval_rotation1 < alphaThreshold) # main effect of rotation angle for on RT power analysis
+RT_COF$minimum_effect_testing <- as.numeric((RT_COF$lCI_95_rotation1 > RT_SESOI) & (RT_COF$uCI_95_rotation1 > RT_SESOI))
+RT_COF$equivalence <- as.numeric((RT_COF$lCI_90_rotation1 > -RT_SESOI) & (RT_COF$uCI_90_rotation1 < RT_SESOI))
+RT_COF$model <- 'RT'
+
+# put together ERP and RT models in one data frame
+sim_results_combined <- rbind(ERP_COF, RT_COF)
+# write.csv(sim_results_combined, "./COF_eff_size.csv")
+
+```
+
+Here we load in the simulated results used in the power analysis that was obtained from the above code
+```{r}
+sim_results_combined = read.csv("./COF_eff_size.csv")
+```
+
+```{r visualise results}
+
+sim_results_combined_long <- sim_results_combined %>%
+  pivot_longer(
+    cols = c(psign_NHST, minimum_effect_testing),  
+    names_to = "test_type",  
+    values_to = "value" 
+  )
+
+sim_summary = sim_results_combined_long %>%
+  group_by(num_subj,model, test_type) %>%
+  summarise(power = mean(value))
+
+sim_summary$test_type
+
+test_type_labels <- c(
+  "minimum_effect_testing" = "Minimum Effect Testing",
+  "psign_NHST" = "NHST Significance"
+)
+
+
+# make plot
+power_curve_plot = ggplot(data = sim_summary, aes(x = num_subj, y = power * 100)) +
+  geom_point(stat = "summary",fun = mean, size = 0.5) +
+  geom_errorbar(stat = "summary",fun = mean, linewidth = 0.4) +
+  geom_line(stat = "summary", fun = mean,) +
+  scale_y_continuous(limits = c(0, 100)) +
+  scale_x_continuous(breaks = seq(floor(min(sim_results_combined$num_subj)), 
+                                  ceiling(max(sim_results_combined$num_subj)), 
+                                  by = 10)) +
+  geom_hline(yintercept = powerThreshold*100, linetype = "dotted", color = "blue", linewidth = 0.4) +
+  labs(x = "Sample size", y = "Power (%)") +
+  facet_grid(model ~ test_type, labeller = labeller(test_type = test_type_labels))+
+  geom_hline(aes(yintercept=-Inf)) + 
+  geom_vline(aes(xintercept=-Inf)) + 
+  coord_cartesian(clip="off")+
+  theme_classic() +
+  theme(axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 6))
+
+# ggsave(plot = power_curve_plot, filename = "power_curve_plot.jpg", height = 10, width = 10, units = "cm", dpi = 600)
+print(power_curve_plot)
+
+
+# put with other plot
+combined_plot <- pERP + power_curve_plot +
+  plot_layout(widths = c(1, 2)) +        # Left plot is 1x width, right is 2x
+  plot_annotation(tag_levels = 'a')      # Auto-labels as (a), (b)
+
+# Show the combined plot
+combined_plot
+
+# ggsave(plot = combined_plot, filename = "combined_plot.tiff", height = 10, width = 15, units = "cm", dpi = 600)
+
+
+
+```
+
+```{r calculate minimum sample sizes to reach the desired power level, results = 'hide'}
+# NHST
+ERPpowerIndex = min(which(sim_summary[sim_summary$model == "ERP" & sim_summary$test_type == "psign_NHST",]$power > powerThreshold))
+
+if(is.infinite(ERPpowerIndex)){
+  ERPpower = max(sim_summary[sim_summary$model == "ERP"& sim_summary$test_type == "psign_NHST",]$power)
+  ERPpowerIndex = min(which(sim_summary[sim_summary$model == "ERP"& sim_summary$test_type == "psign_NHST",]$power == ERPpower))
+  ERPsubs = sim_summary[sim_summary$model == "ERP"& sim_summary$test_type == "psign_NHST",]$num_subj[ERPpowerIndex]
+}else{
+  ERPpower = sim_summary[sim_summary$model == "ERP" & sim_summary$test_type == "psign_NHST",]$power[ERPpowerIndex]
+  ERPsubs = sim_summary[sim_summary$model == "ERP" & sim_summary$test_type == "psign_NHST",]$num_subj[ERPpowerIndex]
+}
+
+RTpowerIndex = min(which(sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "psign_NHST",]$power > powerThreshold))
+
+if(is.infinite(RTpowerIndex)){
+  RTpower = max(sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "psign_NHST",]$power)
+  RTpowerIndex = min(which(sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "psign_NHST",]$power == RTpower))
+  RTsubs = sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "psign_NHST",]$num_subj[RTpowerIndex]
+}else{
+  RTpower = sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "psign_NHST",]$power[RTpowerIndex]
+  RTsubs = sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "psign_NHST",]$num_subj[RTpowerIndex]
+}
+
+# minimum effect
+ERPminimumEffectIndex = min(which(sim_summary[sim_summary$model == "ERP" & sim_summary$test_type == "minimum_effect_testing",]$power > powerThreshold))
+
+if(is.infinite(ERPminimumEffectIndex)){
+  ERPminimumEffect = max(sim_summary[sim_summary$model == "ERP"& sim_summary$test_type == "minimum_effect_testing",]$power)
+  ERPminimumEffectIndex = min(which(sim_summary[sim_summary$model == "ERP"& sim_summary$test_type == "minimum_effect_testing",]$power == ERPminimumEffect))
+  ERPminimumEffectsubs = sim_summary[sim_summary$model == "ERP"& sim_summary$test_type == "minimum_effect_testing",]$num_subj[ERPminimumEffectIndex]
+}else{
+  ERPminimumEffect = sim_summary[sim_summary$model == "ERP" & sim_summary$test_type == "minimum_effect_testing",]$power[ERPminimumEffectIndex]
+  ERPminimumEffectsubs = sim_summary[sim_summary$model == "ERP" & sim_summary$test_type == "minimum_effect_testing",]$num_subj[ERPminimumEffectIndex]
+}
+
+RTminimumEffectIndex = min(which(sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "minimum_effect_testing",]$power > powerThreshold))
+
+if(is.infinite(RTminimumEffectIndex)){
+  RTminimumEffect = max(sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "minimum_effect_testing",]$power)
+  RTminimumEffectIndex = min(which(sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "minimum_effect_testing",]$power == RTminimumEffect))
+  RTminimumEffectsubs = sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "minimum_effect_testing",]$num_subj[RTminimumEffectIndex]
+}else{
+  RTminimumEffect = sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "minimum_effect_testing",]$power[RTminimumEffectIndex]
+  RTminimumEffectsubs = sim_summary[sim_summary$model == "RT" & sim_summary$test_type == "minimum_effect_testing",]$num_subj[RTminimumEffectIndex]
+}
+
+```
+
+```{r show results, results="asis"}
+output_text <- paste(
+  "-----NHST-----",
+  paste("ERP model - ",  ERPpower*100, "% power - ",  ERPsubs, " subjects", sep = ""),
+  paste("RT  model - ",  RTpower*100, "% power - ",  RTsubs, " subjects", sep = ""),
+  "-----Minimum effect testing-----",
+  paste("ERP model - ",  ERPminimumEffect*100, "% power - ",  ERPminimumEffectsubs, " subjects", sep = ""),
+  paste("RT  model - ",  RTminimumEffect*100, "% power - ",  RTminimumEffectsubs, " subjects", sep = ""),
+  sep = "<br><br>"
+)
+
+print(output_text)
+```
