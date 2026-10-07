@@ -22,8 +22,6 @@ low_cutoff        = [];
 ICThreshold       = 0.7; 
 ICLabel           = EEG.etc.ic_classification.ICLabel;
 
-% filter data
-EEG = pop_eegfiltnew(EEG, 'locutoff',low_cutoff,'hicutoff',high_cutoff,'plotfreqz',0);
 
 % indices of muscle and eye components based on the probability threshold
 eyeInd      = find(ICLabel.classifications(:,3) > ICThreshold);
@@ -35,6 +33,9 @@ allInds     = eyeInd;
 cleanedEEG              = pop_subcomp(EEG, allInds); 
 cleanedEEG.etc.rank     = size(cleanedEEG.icaweights, 1); 
 cleanedEEG.etc.nICrej   = size(allInds); 
+
+% filter data
+cleanedEEG = pop_eegfiltnew(cleanedEEG, 'locutoff',low_cutoff,'hicutoff',high_cutoff,'plotfreqz',0);
 
 % save results
 if ~isfolder(cleanedFileDir)

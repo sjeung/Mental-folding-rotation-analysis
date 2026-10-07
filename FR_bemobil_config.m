@@ -91,14 +91,14 @@ bemobil_config.zaplineConfig.noisefreqs = 50;
 % See Klug & Gramann (2020) for an investigation of filter effect on AMICA -> 1.25 Hz should be a good compromise if you
 % don't know how much movement exists, otherwise even higher may be good, up to 2Hz, and you need to subtract 0.25 to
 % obtain the correct cutoff value for a filter order of 1650
-bemobil_config.filter_lowCutoffFreqAMICA = 1.25; % 1.75 is 1.5Hz cutoff!
+bemobil_config.filter_lowCutoffFreqAMICA = 1.75; % 1.75 is 1.5Hz cutoff!
 bemobil_config.filter_AMICA_highPassOrder = 1650; % was used by Klug & Gramann (2020)
 bemobil_config.filter_highCutoffFreqAMICA = []; % not used
 bemobil_config.filter_AMICA_lowPassOrder = []; 
 
 % additional AMICA settings
 bemobil_config.num_models = 1; % default 1
-bemobil_config.AMICA_autoreject = 0; % uses automatic rejection method of AMICA. no time-cleaning (manual or automatic) is needed then!
+bemobil_config.AMICA_autoreject = 1; % uses automatic rejection method of AMICA. no time-cleaning (manual or automatic) is needed then!
 bemobil_config.AMICA_n_rej = 10; % default 10
 bemobil_config.AMICA_reject_sigma_threshold = 3; % default 3
 bemobil_config.AMICA_max_iter = 2000; % default 2000
