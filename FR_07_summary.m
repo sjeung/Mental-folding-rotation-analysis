@@ -16,6 +16,10 @@ time        = (-0.2:1/250:1.2);
 tWindow     = [0.4,0.8]; % 400 to 800 ms from onset
 tIndices    = find(time >= tWindow(1) & time <= tWindow(2));
 
+% figure path
+fPath = 'P:\Sein_Jeung\Project_Fold_Rotation\Figures\aggregated.png';
+
+% condition mapping
 condMap = [
     1  4  90
     2  4  90
@@ -41,9 +45,9 @@ condLabels = {
 };
 
 % Colors for angle
-col90 = [0.2 0.4 0.8];
-col40 = [0.85 0.35 0.2];
-colBase = [0.5 0.5 0.5];
+col40   = [0.941 0.690 0.439];   % #f0b070
+col90   = [0.247 0.498 0.769];   % #3f7fc4
+colBase = [0.72 0.72 0.72];      % unchanged
 
 colors = {
     col90
@@ -138,17 +142,10 @@ end
 figure;
 hold on;
 
-
-
-
 h = gobjects(5,1);
 
-
-
 for iPair = 1:5
-
     data = grandCell{iPair};
-
     meanERP = mean(data, 1, 'omitnan');
 
     n = sum(~isnan(data), 1);
@@ -171,22 +168,21 @@ for iPair = 1:5
         'Color', colors{iPair}, ...
         'LineStyle', lineStyles{iPair}, ...
         'LineWidth', 2);
-    
 end
 
-yline(0, 'k-', ...
-    'HandleVisibility', 'off');
-
-legend(h, condLabels, 'Location', 'best');
-
+yline(0, 'k-','HandleVisibility', 'off');
+order = [2 1 4 3 5];
+legend(h(order), condLabels(order), 'Location', 'best');
 xlabel('Time (s)');
 xline(0, 'k--', 'HandleVisibility', 'off');
-
-ylabel('ERP amplitude');
+ylabel('Amplitude (\muV)');
 box off;
-set(gca, 'FontSize', 12);
-
+set(gca, 'FontSize', 15);
 hold off;
+set(gcf, 'Units', 'centimeters', 'Position', [2 2 18 12]);
+%exportgraphics(gcf, fPath, 'Resolution', 300);
+exportgraphics(gcf, [fPath, '_legend.png'], 'Resolution', 300);
+exportgraphics(gcf, [fPath(1:end-4) '.pdf'], 'ContentType', 'vector');
 
 
 % sort by participant number (not by string, to avoid '10' < '2' issues)
