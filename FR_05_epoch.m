@@ -135,7 +135,7 @@ BEH(rejectVec,:)          = [];
 maxRT = max(BEH.RT);
 
 % epoch
-EEG_epoched = pop_epoch(EEG, {'1','2','3','4','5','6','7','8','9','10'}, [-0.2 maxRT], 'newname', ['sub-' num2str(subject) '_epoched'],'epochinfo', 'yes');
+EEG_epoched = pop_epoch(EEG, {'1','2','3','4','5','6','7','8','9','10'}, [-0.2 maxRT + 0.2], 'newname', ['sub-' num2str(subject) '_epoched'],'epochinfo', 'yes');
 
 % actually remove the trials
 EEG_epoched.epoch(rejectVec)   = [];
