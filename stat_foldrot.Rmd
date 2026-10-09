@@ -18,6 +18,22 @@ suffix = "" #_peakcorrected"
 cols_angle <- c("40" = "#f0b070", "90" = "#3f7fc4")
 ```
 
+```{r eq_test}
+me_eq_test <- function(b, se, df, sesoi, alpha = .05) {
+  ci90 <- b + c(-1, 1) * qt(1 - alpha,     df) * se
+  ci95 <- b + c(-1, 1) * qt(1 - alpha / 2, df) * se
+  p_nhst    <- 2 * pt(-abs(b / se), df)
+  p_equiv   <- max(pt((b + sesoi) / se, df, lower.tail = FALSE),
+                   pt((b - sesoi) / se, df, lower.tail = TRUE))
+  p_min_neg <- pt((b + sesoi) / se, df, lower.tail = TRUE)    # b < -SESOI
+  p_min_pos <- pt((b - sesoi) / se, df, lower.tail = FALSE)   # b > +SESOI
+  data.frame(estimate = b, se = se, ci90_low = ci90[1], ci90_high = ci90[2],
+             ci95_low = ci95[1], ci95_high = ci95[2], sesoi = sesoi,
+             p_nhst = p_nhst, p_equivalence = p_equiv,
+             p_min_effect_neg = p_min_neg, p_min_effect_pos = p_min_pos)
+}
+```
+
 ```{r load-data, message=FALSE}
 # table exported from the MATLAB pipeline:
 T <- read_csv(
@@ -85,16 +101,18 @@ erp_model <- lmer(
 
 summary(erp_model)
 anova(erp_model)
+
+cf <- summary(erp_model)$coefficients
+erp_res <- me_eq_test(cf["FoldingAngle2", "Estimate"],
+                      cf["FoldingAngle2", "Std. Error"],
+                      cf["FoldingAngle2", "df"],
+                      sesoi = 0.3)
+
+erp_res
 ```
 
 ```{r rt-model}
 ## RT MODEL ##
-#rt_model <- lmer(
-#  latency ~ FoldingDifficulty * FoldingAngle + (1 | Subject),
-#  data = T_rt,
-#  REML = TRUE
-#)
-
 rt_model <- glmer(latency ~ FoldingDifficulty * FoldingAngle + (1|Subject), data = T_erp, family = Gamma(link = "log"))
 
 
@@ -113,6 +131,26 @@ dfERP <- as.data.frame(erp_emm) %>%
   )
 
 dfERP
+```
+
+```{r minimum effect test for RT}
+sesoi_rt <- 1   #
+
+# back-transform to seconds, then average over difficulty
+emm_resp  <- regrid(emmeans(rt_model, ~ FoldingAngle * FoldingDifficulty))
+emm_angle <- emmeans(emm_resp, ~ FoldingAngle)
+con_avg   <- summary(contrast(emm_angle, method = "revpairwise"))   # 90° - 40°
+
+rt_res <- me_eq_test(con_avg$estimate, con_avg$SE, df = Inf, sesoi = sesoi_rt)
+print(rt_res, digits = 4)
+
+# angle effect within each difficulty level (simple effects)
+con_by <- summary(contrast(emm_resp, method = "revpairwise",
+                           by = "FoldingDifficulty", simple = "FoldingAngle"))
+rt_by  <- do.call(rbind, lapply(seq_len(nrow(con_by)), function(i)
+  cbind(FoldingDifficulty = con_by$FoldingDifficulty[i],
+        me_eq_test(con_by$estimate[i], con_by$SE[i], df = Inf, sesoi = sesoi_rt))))
+print(rt_by, digits = 4)
 ```
 
 ```{r plot-erp}
