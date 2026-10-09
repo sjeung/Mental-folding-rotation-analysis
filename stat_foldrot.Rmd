@@ -9,16 +9,19 @@ library(lme4)
 library(lmerTest)  
 library(emmeans)     
 library(patchwork)  
+library(ggpattern)
 ```
 
 ```{r settings, results = "hide", message=FALSE, warnings = FALSE}
 alphaThreshold <- 0.05  
+suffix = "" #_peakcorrected"
+cols_angle <- c("40" = "#f0b070", "90" = "#3f7fc4")
 ```
 
 ```{r load-data, message=FALSE}
 # table exported from the MATLAB pipeline:
 T <- read_csv(
-  "P:/Sein_Jeung/Project_Fold_Rotation/Results/grand_table_peakcorrected.csv",
+  paste0("P:/Sein_Jeung/Project_Fold_Rotation/Results/grand_table", suffix, ".csv"),
   col_types = cols(
     Subject           = col_character(),
     Trial             = col_double(),
@@ -45,17 +48,10 @@ T <- T %>%
     FoldingAngle      = factor(FoldingAngle, levels = c(40, 90))
   )
 
-# sum-to-zero contrasts, so fixed-effect estimates
-#contrasts(T$FoldingDifficulty) <- contr.sum(2)
-#contrasts(T$FoldingAngle)      <- contr.sum(2)
 
 contrasts(T$FoldingDifficulty) <- contr.treatment(2)
 contrasts(T$FoldingAngle)      <- contr.treatment(2)
 
-# set contrasts (dummy)
-#contrasts(T$FoldingDifficulty) <- c(1, 0)
-#contrasts(T$FoldingAngle)  <- c(1, 0)
-  
 
 # drop rows with missing values
 T_erp <- T %>% filter(!is.na(ParietalNegativity))
@@ -121,40 +117,55 @@ dfERP
 
 ```{r plot-erp}
 ## plot the observed/estimated ERP effect ##
-pERP <- ggplot(dfERP, aes(x = Rotation, y = ERP_fix, fill = Folding)) +
-  geom_bar(stat = "identity", position = "dodge", width = 0.6, color = "black") +
-  geom_errorbar(
-    aes(ymin = ERP_fix - SE, ymax = ERP_fix + SE),
-    position = position_dodge(width = 0.6),
-    width = 0.2
-  ) +
-  scale_fill_manual(
-    values = c("lightgray", "darkgray"),
-    labels = c("4" = "4 faces carried", "6" = "6 faces carried")
-  ) +
-  labs(x = "Rotation Condition (\u00b0)", y = "Microvolts (\u00b5V)", fill = "Folding Condition") +
-  theme_classic() +
-  theme(
-    #axis.title.y = element_text(size = 12),
-    #axis.title.x = element_text(size = 12),
-    #axis.text.y = element_text(size = 12),
-    #axis.text.x = element_text(size = 12),
-    #legend.position = c(0.95, 0.25),
-    #legend.justification = c("right", "top"),
-    #legend.background = element_rect(fill = "white", color = "black"),
-    #legend.key.size = unit(0.3, "cm"),
-    #legend.text = element_text(size = 6),
-    #legend.title = element_text(size = 6),
-    text = element_text(size = 12),
-    legend.position = "none"
-  )
+pERP <- ggplot(dfERP, aes(x = Rotation, y = ERP_fix, fill = Rotation, pattern = Folding)) +
+geom_col_pattern(
+position = position_dodge(width = 0.6),
+width = 0.6,
+color = "black",
+pattern_fill = "white",
+pattern_colour = NA,
+pattern_angle = 45,
+pattern_density = 0.3,
+pattern_spacing = 0.03
+) +
+#     geom_bar(stat = "identity", position = "dodge", width = 0.6, color = "black") +
+geom_errorbar(
+aes(ymin = ERP_fix - SE, ymax = ERP_fix + SE),
+position = position_dodge(width = 0.6),
+width = 0.2,
+linewidth = 1
+) +
+scale_fill_manual(
+values = cols_angle,
+labels = c("40" = "40 degrees to fold", "90" = "90 degrees to fold")
+) +
+scale_pattern_manual(
+values = c("none", "stripe"),
+labels = c("4" = "4 faces carried", "6" = "6 faces carried")
+) +
+labs(x = "Folding Angle (\u00b0)", y = "Amplitude (\u00b5V)", fill = "Folding Condition") +
+theme_classic() +
+theme(
+axis.title.y = element_text(size = 15),
+axis.title.x = element_text(size = 15),
+axis.text.y = element_text(size = 15),
+axis.text.x = element_text(size = 15),
+#legend.position = c(0.95, 0.25),
+#legend.justification = c("right", "top"),
+#legend.background = element_rect(fill = "white", color = "black"),
+#legend.key.size = unit(0.3, "cm"),
+#legend.text = element_text(size = 6),
+#legend.title = element_text(size = 6),
+text = element_text(size = 15),
+legend.position = "none"
+)
 ggsave(
-  "P:/Sein_Jeung/Project_Fold_Rotation/Figures/ERP_peakcorrected_figure.png",
-  plot = pERP,
-  width = 5,
-  height = 4,
-  units = "in",
-  dpi = 300
+paste0("P:/Sein_Jeung/Project_Fold_Rotation/Figures/ERP", suffix, "_figure.png"),
+plot = pERP,
+width = 3.5,
+height = 4,
+units = "in",
+dpi = 300
 )
 
 pERP
@@ -194,41 +205,53 @@ dfRT <- as.data.frame(rt_emm) %>%
 
 dfRT
 
-pRT <- ggplot(dfRT, aes(x = Rotation, y = RT, fill = Folding)) +
-  geom_col(
-    position = position_dodge(width = 0.6),
-    width = 0.6,
-    color = "black"
-  ) +
-  scale_fill_manual(
-    values = c("lightgray", "darkgray"),
-    labels = c("4" = "4 faces carried", "6" = "6 faces carried")
-  ) +
-  geom_errorbar(
-    aes(ymin = RT - SE, ymax = RT + SE),
-    position = position_dodge(width = 0.6),
-    width = 0.2
-  ) +
-  labs(
-    x = "Folding angle (°)",
-    y = "Response time (s)",
-    fill = "Folding difficulty"
-  ) +
-  theme_classic() +
-   theme(
-    text = element_text(size = 12),
-    legend.position = "none"
-  )
-
-ggsave(
-  "P:/Sein_Jeung/Project_Fold_Rotation/Figures/RT_figure.png",
-  plot = pRT,
-  width = 5,
-  height = 4,
-  units = "in",
-  dpi = 300
+pRT <- ggplot(dfRT, aes(x = Rotation, y = RT, fill = Rotation, pattern = Folding)) +
+geom_col_pattern(
+position = position_dodge(width = 0.6),
+width = 0.6,
+color = "black",
+pattern_fill = "white",
+pattern_colour = NA,
+pattern_angle = 45,
+pattern_density = 0.3,
+pattern_spacing = 0.03
+) +
+geom_errorbar(
+aes(ymin = RT - SE, ymax = RT + SE),
+position = position_dodge(width = 0.6),
+width = 0.2,
+linewidth = 1
+) +
+scale_fill_manual(
+values = cols_angle,
+labels = c("40" = "40 degrees to fold", "90" = "90 degrees to fold")
+) +
+scale_pattern_manual(
+values = c("none", "stripe"),
+labels = c("4" = "4 faces carried", "6" = "6 faces carried")
+) +
+labs(
+x = "Folding angle (°)",
+y = "Response time (s)",
+fill = "Folding difficulty"
+) +
+theme_classic() +
+theme(
+axis.title.y = element_text(size = 15),
+axis.title.x = element_text(size = 15),
+axis.text.y = element_text(size = 15),
+axis.text.x = element_text(size = 15),
+text = element_text(size = 15),
+legend.position = "none"
 )
-
+ggsave(
+"P:/Sein_Jeung/Project_Fold_Rotation/Figures/RT_figure.png",
+plot = pRT,
+width = 3.5,
+height = 4,
+units = "in",
+dpi = 300
+)
 pRT
 ```
 ```{r Helmert contrast}
