@@ -83,12 +83,15 @@ T = table( ...
         'ParietalNegativity',...
         'latency'});
 
+
+rejMat  = nan(51, 5); 
+nMat    = nan(51, 5); 
+
 for iPair = 1:5
 
     grandMat = [];
 
     for Pi = participants
-
 
         pmat = load(['P:\Sein_Jeung\Project_Fold_Rotation\Data\7_ERPs\sub-' ...
             num2str(Pi) '_ERPs.mat']);
@@ -106,6 +109,8 @@ for iPair = 1:5
         trialInds = ismember(pmat.condInds, selectedConds);
         participantERP = mean(pmat.erpData(trialInds, :), 1);
 
+        rejMat(Pi,iPair) = nnz(ismember(pmat.rejInds, find(trialInds)));
+        nMat(Pi,iPair) = numel(find(trialInds));
         
         % compute trial-specific negativity
         pNeg        = mean(pmat.erpData(trialInds, tIndices),2); 
@@ -134,6 +139,8 @@ for iPair = 1:5
     grandCell{iPair} = grandMat; 
 
 end
+
+sum(rejMat,1,'omitnan')*100./sum(nMat,1,'omitnan')
 
 
 % visualize
@@ -172,7 +179,7 @@ end
 
 yline(0, 'k-','HandleVisibility', 'off');
 order = [2 1 4 3 5];
-legend(h(order), condLabels(order), 'Location', 'best');
+%legend(h(order), condLabels(order), 'Location', 'best');
 xlabel('Time (s)');
 xline(0, 'k--', 'HandleVisibility', 'off');
 ylabel('Amplitude (\muV)');
@@ -180,8 +187,8 @@ box off;
 set(gca, 'FontSize', 15);
 hold off;
 set(gcf, 'Units', 'centimeters', 'Position', [2 2 18 12]);
-%exportgraphics(gcf, fPath, 'Resolution', 300);
-exportgraphics(gcf, [fPath, '_legend.png'], 'Resolution', 300);
+exportgraphics(gcf, fPath, 'Resolution', 300);
+%exportgraphics(gcf, [fPath, '_legend.png'], 'Resolution', 300);
 exportgraphics(gcf, [fPath(1:end-4) '.pdf'], 'ContentType', 'vector');
 
 

@@ -34,7 +34,6 @@ input_filepath = [bemobil_config.study_folder '\' bemobil_config.epoched_folder 
 
 % load data
 EEG = pop_loadset('filename', ['sub-' num2str(subject) '_' bemobil_config.epoched_filename] ,'filepath', input_filepath);
-EEG_baselined = EEG; 
 
 % Check exclulsion criterion No. 4 
 badChans        =  find(EEG.etc.channel_rejection.bad_channel_detection); 
@@ -52,24 +51,38 @@ maxT    = find(EEG.times >= tMax, 1,'first');
 
 chanInds = find(contains({EEG.chanlocs(:).labels},chans));
 
-erpData     = []; 
-rejInds     = []; 
-condInds    = [];
-for Ei = 1:size(EEG.data,3)
+% Moving-window peak-to-peak artifact detection (ERPLAB, Lopez-Calderon &
+% Luck, 2014), threshold 100 uV
+winSamp  = round(0.200 * EEG.srate);          % 200 ms window
+stepSamp = round(0.100 * EEG.srate);          % 100 ms step
+starts   = unique([1:stepSamp:(EEG.pnts-winSamp+1), EEG.pnts-winSamp+1]);
+
+rejFlag = false(1, EEG.trials);
+for Ei = 1:EEG.trials
     for Ci = 1:numel(chanInds)
-        
-        baselineMean = mean(EEG.data(chanInds(Ci),firstT:lastT,Ei));
-        EEG_baselined.data(chanInds(Ci),:,Ei) = EEG_baselined.data(chanInds(Ci),:,Ei) - baselineMean; 
-
-        p2p = max(EEG_baselined.data(chanInds(Ci),:,Ei)) - min(EEG_baselined.data(chanInds(Ci),:,Ei)); % peak-to-peak amplitude in microV
-        if p2p > 100
-            rejInds(end+1) = Ei;  
+        x = EEG.data(chanInds(Ci), :, Ei);
+        for s = starts
+            seg = x(s:s+winSamp-1);
+            if max(seg) - min(seg) > 100
+                rejFlag(Ei) = true;
+                break
+            end
         end
+        if rejFlag(Ei), break, end
     end
-    condInds(end+1) = str2double(EEG.epoch(Ei).eventtype{1});
-    erpData(end+1,:) = mean(EEG_baselined.data(chanInds(Ci),1:maxT,Ei),1);
 end
+rejInds = find(rejFlag);
 
+% Baseline-correct and extract ERP data / condition labels
+EEG_baselined = EEG;
+condInds = zeros(1, EEG.trials);
+erpData  = zeros(EEG.trials, maxT);
+for Ei = 1:EEG.trials
+    baselineMean = mean(mean(EEG.data(chanInds, firstT:lastT, Ei), 2));
+    EEG_baselined.data(chanInds,:,Ei) = EEG.data(chanInds,:,Ei) - baselineMean;
+    condInds(Ei)  = str2double(EEG.epoch(Ei).eventtype{1});
+    erpData(Ei,:) = mean(EEG_baselined.data(chanInds, 1:maxT, Ei), 1);
+end
 
 
 f = figure('Visible','off');
@@ -114,6 +127,6 @@ grid on;
 box on;
 
 saveas(f, fullfile(['P:\Sein_Jeung\Project_Fold_Rotation\Figures\subject_ERPs\sub-' num2str(subject) '_ERPs.png']))
-save(fullfile(['P:\Sein_Jeung\Project_Fold_Rotation\Data\7_ERPs\sub-' num2str(subject) '_ERPs.mat']), 'erpData', 'condInds');
+save(fullfile(['P:\Sein_Jeung\Project_Fold_Rotation\Data\7_ERPs\sub-' num2str(subject) '_ERPs.mat']), 'erpData', 'condInds', 'rejInds');
 end
 
