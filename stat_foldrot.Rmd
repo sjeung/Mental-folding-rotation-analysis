@@ -14,11 +14,14 @@ library(ggpattern)
 
 ```{r settings, results = "hide", message=FALSE, warnings = FALSE}
 alphaThreshold <- 0.05  
-suffix = "" #_peakcorrected"
+
+# no suffix for the original ERP analysis, "_peakcorrected" for the peak corrected version
+suffix = "" # _peakcorrected" 
 cols_angle <- c("40" = "#f0b070", "90" = "#3f7fc4")
 ```
 
 ```{r eq_test}
+# minimum effect and equivalence test 
 me_eq_test <- function(b, se, df, sesoi, alpha = .05) {
   ci90 <- b + c(-1, 1) * qt(1 - alpha,     df) * se
   ci95 <- b + c(-1, 1) * qt(1 - alpha / 2, df) * se
@@ -35,7 +38,8 @@ me_eq_test <- function(b, se, df, sesoi, alpha = .05) {
 ```
 
 ```{r load-data, message=FALSE}
-# table exported from the MATLAB pipeline:
+
+# table exported from the MATLAB pipeline
 T <- read_csv(
   paste0("P:/Sein_Jeung/Project_Fold_Rotation/Results/grand_table", suffix, ".csv"),
   col_types = cols(
@@ -48,6 +52,12 @@ T <- read_csv(
   )
 )
 
+T <- T %>%
+  mutate(
+    Subject           = factor(Subject),
+    FoldingDifficulty = factor(FoldingDifficulty, levels = c(4, 6)),
+    FoldingAngle      = factor(FoldingAngle, levels = c(40, 90))
+  )
 
 T2 <- T %>%
   mutate(
@@ -56,15 +66,6 @@ T2 <- T %>%
     FoldingAngle      = factor(FoldingAngle, levels = c(0, 40, 90))
   )
 
-
-T <- T %>%
-  mutate(
-    Subject           = factor(Subject),
-    FoldingDifficulty = factor(FoldingDifficulty, levels = c(4, 6)),
-    FoldingAngle      = factor(FoldingAngle, levels = c(40, 90))
-  )
-
-
 contrasts(T$FoldingDifficulty) <- contr.treatment(2)
 contrasts(T$FoldingAngle)      <- contr.treatment(2)
 
@@ -72,21 +73,7 @@ contrasts(T$FoldingAngle)      <- contr.treatment(2)
 # drop rows with missing values
 T_erp <- T %>% filter(!is.na(ParietalNegativity))
 T_rt  <- T %>% filter(!is.na(latency))
-
-#### for Helmert contrast
-
-
-helmert_matrix <- matrix(
-  c(-2/3, 1/3, 1/3,
-     0,   1/2, -1/2),
-  nrow = 3, ncol = 2,
-  dimnames = list(c("0", "4", "6"), c("BaselineVsFolding", "FourVSix"))  
-)
-
-# drop rows with missing values
 T2_erp <- T2 %>% filter(!is.na(ParietalNegativity))
-contrasts(T2_erp$FoldingDifficulty) <- helmert_matrix
-####
 
 
 ```
@@ -100,24 +87,29 @@ erp_model <- lmer(
 )
 
 summary(erp_model)
-anova(erp_model)
-
 cf <- summary(erp_model)$coefficients
-erp_res <- me_eq_test(cf["FoldingAngle2", "Estimate"],
-                      cf["FoldingAngle2", "Std. Error"],
-                      cf["FoldingAngle2", "df"],
-                      sesoi = 0.3)
+
+# Main angle contrast, averaged over folding difficulty
+emm_angle <- emmeans(erp_model, ~ FoldingAngle)
+angle_contrast <- contrast(emm_angle, method = "revpairwise")
+summary(angle_contrast, infer = TRUE)
+ac <- as.data.frame(summary(angle_contrast))
+
+erp_res <- me_eq_test(
+  ac$estimate,
+  ac$SE,
+  ac$df,
+  sesoi = 0.3
+)
 
 erp_res
+
 ```
 
 ```{r rt-model}
 ## RT MODEL ##
 rt_model <- glmer(latency ~ FoldingDifficulty * FoldingAngle + (1|Subject), data = T_erp, family = Gamma(link = "log"))
-
-
 summary(rt_model)
-anova(rt_model)
 ```
 
 
@@ -130,27 +122,58 @@ dfERP <- as.data.frame(erp_emm) %>%
     Folding  = factor(FoldingDifficulty, levels = c(4, 6))
   )
 
+erp_emm
+
+# Main contrast: 4 vs. 6 folds, averaged over folding angle
+emm_difficulty <- emmeans(erp_model, ~ FoldingDifficulty)
+pairs(emm_difficulty, infer = TRUE, level = 0.90)
+emm_difficulty
+
+# Main contrast: 40° vs. 90°, averaged over folding difficulty
+emm_angle <- emmeans(erp_model, ~ FoldingAngle)
+pairs(emm_angle, infer = TRUE, level = 0.90)
+emm_angle
 dfERP
 ```
 
 ```{r minimum effect test for RT}
-sesoi_rt <- 1   #
+sesoi_rt <- 1   # smallest effect size of interest, in seconds
 
-# back-transform to seconds, then average over difficulty
+# Cell means on the response scale (seconds), from the same model
 emm_resp  <- regrid(emmeans(rt_model, ~ FoldingAngle * FoldingDifficulty))
-emm_angle <- emmeans(emm_resp, ~ FoldingAngle)
-con_avg   <- summary(contrast(emm_angle, method = "revpairwise"))   # 90° - 40°
+emm_angle <- emmeans(emm_resp, ~ FoldingAngle)          # averaged over difficulty
 
-rt_res <- me_eq_test(con_avg$estimate, con_avg$SE, df = Inf, sesoi = sesoi_rt)
-print(rt_res, digits = 4)
+# Helper: contrast -> estimate, SE, 90% CI, plus minimum-effect/equivalence tests
+rt_tests <- function(con, sesoi) {
+  ci <- as.data.frame(confint(con, level = 0.90))       # 90% CI for TOST logic
 
-# angle effect within each difficulty level (simple effects)
-con_by <- summary(contrast(emm_resp, method = "revpairwise",
-                           by = "FoldingDifficulty", simple = "FoldingAngle"))
-rt_by  <- do.call(rbind, lapply(seq_len(nrow(con_by)), function(i)
-  cbind(FoldingDifficulty = con_by$FoldingDifficulty[i],
-        me_eq_test(con_by$estimate[i], con_by$SE[i], df = Inf, sesoi = sesoi_rt))))
-print(rt_by, digits = 4)
+  # regridded objects use asymp.LCL/UCL; others use lower.CL/upper.CL
+  names(ci)[grepl("lower.CL|asymp.LCL", names(ci))] <- "lower.CL"
+  names(ci)[grepl("upper.CL|asymp.UCL", names(ci))] <- "upper.CL"
+
+  keep <- setdiff(names(ci), "df")                       # keeps any 'by' columns
+  out  <- lapply(seq_len(nrow(ci)), function(i) {
+    cbind(ci[i, keep, drop = FALSE],
+          me_eq_test(ci$estimate[i], ci$SE[i], df = Inf, sesoi = sesoi))
+  })
+  do.call(rbind, out)
+}
+
+# 1) Means in seconds
+means_angle <- as.data.frame(emm_angle)                 # 40° and 90°, averaged
+means_cells <- as.data.frame(emm_resp)                  # every angle x difficulty cell
+
+# 2) Angle effect (90° - 40°) averaged over difficulty
+rt_avg <- rt_tests(contrast(emm_angle, method = "revpairwise"), sesoi_rt)
+
+# 3) Angle effect within each difficulty level
+rt_by <- rt_tests(contrast(emm_resp, method = "revpairwise",
+                           by = "FoldingDifficulty"), sesoi_rt)
+
+print(means_angle, digits = 3)
+print(means_cells, digits = 3)
+print(rt_avg,      digits = 4)
+print(rt_by,       digits = 4)
 ```
 
 ```{r plot-erp}
@@ -223,7 +246,6 @@ dfRT
 ```
 
 ```{r plot-rt}
-
 rt_emm <- emmeans(
   rt_model,
   ~ FoldingDifficulty * FoldingAngle,
@@ -292,7 +314,17 @@ dpi = 300
 )
 pRT
 ```
+
+
 ```{r Helmert contrast}
+
+T2_erp$FoldingDifficulty <- factor(T2_erp$FoldingDifficulty, levels = c("0", "4", "6"))
+
+# Helmert coding, scaled so each coefficient is a raw difference in µV
+contrasts(T2_erp$FoldingDifficulty) <- cbind(
+  fold_vs_base = c(-2/3, 1/3, 1/3),   # mean(4, 6) - baseline
+  four_vs_six  = c(0, -1/2, 1/2)      # 6 - 4 (not interpreted here)
+)
 
 diff_model <- lmer(
   ParietalNegativity ~ FoldingDifficulty + (1 | Subject),
@@ -300,10 +332,10 @@ diff_model <- lmer(
   REML = TRUE
 )
 
-summary(diff_model)
-anova(diff_model)
+anova(diff_model)                      # omnibus F(2, df)
+summary(diff_model)                    # coefficient FoldingDifficultyfold_vs_base is the h4 test
+confint(diff_model, parm = "FoldingDifficultyfold_vs_base",
+        method = "Wald", level = 0.95)
+emmeans::emmeans(diff_model, ~ FoldingDifficulty)   # descriptive means only
 
-# Check direction of the effect with descriptive means
-# (helps confirm folding conditions are MORE negative than baseline)
-emmeans(diff_model, ~ FoldingDifficulty)
 ```
